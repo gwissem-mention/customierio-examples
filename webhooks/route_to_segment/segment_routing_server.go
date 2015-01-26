@@ -2,14 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/segmentio/analytics-go"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
-const SEGMENT_WRITE_KEY = "<YOUR KEY HERE>"
+var SegmentWriteKey string
 
 type CIOWebhook struct {
 	EventType string                 `json:"event_type"`
@@ -19,6 +21,14 @@ type CIOWebhook struct {
 }
 
 func main() {
+
+	flag.StringVar(&SegmentWriteKey, "segment-write-key", "", "Your Segment.com write key")
+	flag.Parse()
+
+	if SegmentWriteKey == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
 
@@ -37,7 +47,7 @@ func main() {
 
 		customerID := webhook.Data["customer_id"].(string)
 
-		segment := analytics.New(SEGMENT_WRITE_KEY)
+		segment := analytics.New(SegmentWriteKey)
 		segment.Track(map[string]interface{}{
 			"userId":     customerID,
 			"event":      fmt.Sprintf("customerio:%v", webhook.EventType),
