@@ -55,7 +55,7 @@ func main() {
 
 	})
 
-	log.Info("Listening on :8080 for incoming webhooks to forward to segment.com")
+	log.Print("Listening on :8080 for incoming webhooks to forward to segment.com")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
