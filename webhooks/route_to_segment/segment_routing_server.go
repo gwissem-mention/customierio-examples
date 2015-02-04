@@ -83,7 +83,8 @@ func main() {
 		customerID := webhook.Data["customer_id"].(string)
 
 		segment := analytics.New(envConfig.SegmentWriteKey)
-		segment.Track(map[string]interface{}{
+
+		err = segment.Track(map[string]interface{}{
 			"userId":     customerID,
 			"event":      fmt.Sprintf("customerio:%v", webhook.EventType),
 			"properties": webhook.Data,
@@ -92,6 +93,13 @@ func main() {
 			},
 			"timestamp": time.Unix(int64(webhook.Timestamp), 0).Format(time.RFC3339),
 		})
+
+		if err != nil {
+			msg := fmt.Sprintf("segment.Track failed: %s", err)
+			log.Print(err)
+			http.Error(w, msg, http.StatusInternalServerError)
+			return
+		}
 
 		log.Println("ok", r)
 
