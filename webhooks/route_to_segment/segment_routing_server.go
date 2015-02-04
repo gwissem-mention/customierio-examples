@@ -78,6 +78,8 @@ func main() {
 			return
 		}
 
+		delete(webhook.Data, "variables")
+
 		customerID := webhook.Data["customer_id"].(string)
 
 		segment := analytics.New(envConfig.SegmentWriteKey)
