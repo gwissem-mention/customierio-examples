@@ -1,0 +1,10 @@
+{
+    "environments": {
+        "production": {
+            "segment_write_key": "..."
+        },
+        "test": {
+            "segment_write_key": "..."
+        }
+    }
+}

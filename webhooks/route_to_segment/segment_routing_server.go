@@ -11,7 +11,13 @@ import (
 	"time"
 )
 
-var SegmentWriteKey string
+type ConfigEnv struct {
+	SegmentWriteKey string `json:"segment_write_key"`
+}
+
+type Config struct {
+	Envs map[string]ConfigEnv `json:"environments"`
+}
 
 type CIOWebhook struct {
 	EventType string                 `json:"event_type"`
@@ -20,17 +26,44 @@ type CIOWebhook struct {
 	Data      map[string]interface{} `json:"data"`
 }
 
+func loadConfig(path string) (*Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("loadConfig: %v", err)
+	}
+
+	decoder := json.NewDecoder(f)
+	config := &Config{}
+
+	if err := decoder.Decode(config); err != nil {
+		return nil, fmt.Errorf("loadConfig: %v", err)
+	}
+
+	return config, nil
+}
+
 func main() {
 
-	flag.StringVar(&SegmentWriteKey, "segment-write-key", "", "Your Segment.com write key")
+	configPath := flag.String("config", "./config.json", "Path to the config file")
 	flag.Parse()
 
-	if SegmentWriteKey == "" {
-		flag.Usage()
-		os.Exit(1)
+	config, err := loadConfig(*configPath)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
+
+		query := r.URL.Query()
+
+		env := query.Get("env")
+		envConfig, ok := config.Envs[env]
+		if !ok {
+			msg := fmt.Sprintf("Environment %#v does not exist", env)
+			log.Print(msg)
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		}
 
 		buf := make([]byte, r.ContentLength)
 		r.Body.Read(buf)
@@ -47,7 +80,7 @@ func main() {
 
 		customerID := webhook.Data["customer_id"].(string)
 
-		segment := analytics.New(SegmentWriteKey)
+		segment := analytics.New(envConfig.SegmentWriteKey)
 		segment.Track(map[string]interface{}{
 			"userId":     customerID,
 			"event":      fmt.Sprintf("customerio:%v", webhook.EventType),
