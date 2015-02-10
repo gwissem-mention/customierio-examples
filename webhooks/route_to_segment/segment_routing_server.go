@@ -20,10 +20,29 @@ type Config struct {
 }
 
 type CIOWebhook struct {
-	EventType string                 `json:"event_type"`
-	EventID   string                 `json:"event_id"`
-	Timestamp int                    `json:"timestamp"`
-	Data      map[string]interface{} `json:"data"`
+	EventSourceNil  *string                `json:"event_source"`
+	EventType       string                 `json:"event_type"`
+	EventID         string                 `json:"event_id"`
+	TimestampNil    *int                   `json:"timestamp"`
+	TimestampIsoNil *string                `json:"timestamp_iso"`
+	Data            map[string]interface{} `json:"data"`
+}
+
+func (w *CIOWebhook) EventSource() string {
+	if s := w.EventSourceNil; s != nil {
+		return *s
+	}
+	return "customerio"
+}
+
+func (w *CIOWebhook) TimestampRFC3339() string {
+	if ts := w.TimestampNil; ts != nil {
+		return time.Unix(int64(*ts), 0).Format(time.RFC3339)
+	}
+	if ts := w.TimestampIsoNil; ts != nil {
+		return *ts
+	}
+	return time.Now().Format(time.RFC3339)
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -86,12 +105,12 @@ func main() {
 
 		err = segment.Track(map[string]interface{}{
 			"userId":     customerID,
-			"event":      fmt.Sprintf("customerio:%v", webhook.EventType),
+			"event":      fmt.Sprintf("%v:%v", webhook.EventSource(), webhook.EventType),
 			"properties": webhook.Data,
 			"context": map[string]interface{}{
 				"event_id": webhook.EventID,
 			},
-			"timestamp": time.Unix(int64(webhook.Timestamp), 0).Format(time.RFC3339),
+			"timestamp": webhook.TimestampRFC3339(),
 		})
 
 		if err != nil {
