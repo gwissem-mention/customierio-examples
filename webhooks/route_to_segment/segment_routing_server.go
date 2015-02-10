@@ -99,6 +99,12 @@ func main() {
 
 		delete(webhook.Data, "variables")
 
+		if webhook.Data["customer_id"] == nil {
+			msg := "data.customer_id is nil"
+			log.Print(err)
+			http.Error(w, msg, http.StatusNotAcceptable)
+			return
+		}
 		customerID := webhook.Data["customer_id"].(string)
 
 		segment := analytics.New(envConfig.SegmentWriteKey)
