@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/segmentio/analytics-go"
 	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/segmentio/analytics-go"
 )
 
 type ConfigEnv struct {
@@ -19,7 +20,7 @@ type Config struct {
 	Envs map[string]ConfigEnv `json:"environments"`
 }
 
-type CIOWebhook struct {
+type Webhook struct {
 	EventSourceNil  *string                `json:"event_source"`
 	EventType       string                 `json:"event_type"`
 	EventID         string                 `json:"event_id"`
@@ -28,14 +29,27 @@ type CIOWebhook struct {
 	Data            map[string]interface{} `json:"data"`
 }
 
-func (w *CIOWebhook) EventSource() string {
+type Action interface {
+	Unmarshal(data []byte) error
+	Send(client *analytics.Client) error
+}
+
+type Identify struct {
+	identify *analytics.Identify
+}
+
+type Track struct {
+	track *analytics.Track
+}
+
+func (w *Webhook) EventSource() string {
 	if s := w.EventSourceNil; s != nil {
 		return *s
 	}
 	return "customerio"
 }
 
-func (w *CIOWebhook) TimestampRFC3339() string {
+func (w *Webhook) TimestampRFC3339() string {
 	if ts := w.TimestampNil; ts != nil {
 		return time.Unix(int64(*ts), 0).Format(time.RFC3339)
 	}
@@ -43,6 +57,20 @@ func (w *CIOWebhook) TimestampRFC3339() string {
 		return *ts
 	}
 	return time.Now().Format(time.RFC3339)
+}
+
+func (i *Identify) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, &i.identify)
+}
+func (i *Identify) Send(client *analytics.Client) error {
+	return client.Identify(i.identify)
+}
+
+func (i *Track) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, &i.track)
+}
+func (i *Track) Send(client *analytics.Client) error {
+	return client.Track(i.track)
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -59,6 +87,46 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+func handle(action Action, config *Config, w http.ResponseWriter, r *http.Request) {
+
+	query := r.URL.Query()
+
+	env := query.Get("env")
+	envConfig, ok := config.Envs[env]
+	if !ok {
+		msg := fmt.Sprintf("Environment %#v does not exist", env)
+		log.Print(msg)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+
+	buf := make([]byte, r.ContentLength)
+	r.Body.Read(buf)
+
+	log.Println(string(buf))
+
+	if err := action.Unmarshal(buf); err != nil {
+		log.Println(err, r)
+		w.WriteHeader(http.StatusNotAcceptable)
+		w.Write([]byte("bad request"))
+		return
+	}
+
+	segment := analytics.New(envConfig.SegmentWriteKey)
+
+	if err := action.Send(segment); err != nil {
+		msg := fmt.Sprintf("action.Send failed: %s", err)
+		log.Print(err)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("ok", r)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }
 
 func main() {
@@ -87,7 +155,9 @@ func main() {
 		buf := make([]byte, r.ContentLength)
 		r.Body.Read(buf)
 
-		var webhook *CIOWebhook
+		log.Println(string(buf))
+
+		var webhook *Webhook
 		err := json.Unmarshal(buf, &webhook)
 
 		if err != nil {
@@ -109,14 +179,16 @@ func main() {
 
 		segment := analytics.New(envConfig.SegmentWriteKey)
 
-		err = segment.Track(map[string]interface{}{
-			"userId":     customerID,
-			"event":      fmt.Sprintf("%v:%v", webhook.EventSource(), webhook.EventType),
-			"properties": webhook.Data,
-			"context": map[string]interface{}{
+		err = segment.Track(&analytics.Track{
+			UserId:     customerID,
+			Event:      webhook.EventType,
+			Properties: webhook.Data,
+			Context: map[string]interface{}{
 				"event_id": webhook.EventID,
 			},
-			"timestamp": webhook.TimestampRFC3339(),
+			Message: analytics.Message{
+				Timestamp: webhook.TimestampRFC3339(),
+			},
 		})
 
 		if err != nil {
@@ -130,7 +202,14 @@ func main() {
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
+	})
 
+	http.HandleFunc("/webhook/identify", func(w http.ResponseWriter, r *http.Request) {
+		handle(&Identify{}, config, w, r)
+	})
+
+	http.HandleFunc("/webhook/track", func(w http.ResponseWriter, r *http.Request) {
+		handle(&Track{}, config, w, r)
 	})
 
 	log.Print("Listening on :8080 for incoming webhooks to forward to segment.com")
