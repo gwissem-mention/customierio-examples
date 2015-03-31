@@ -177,11 +177,23 @@ func main() {
 		}
 		customerID := webhook.Data["customer_id"].(string)
 
+		var eventType, webhookEventType string
+        webhookEventType = webhook.EventType
+		eventType = webhookEventType
+         
+		if webhookEventType == "email_delivered" {
+			eventType = "Email - email sent"
+		} else if webhookEventType == "email_opened" {
+			eventType = "Email - opened email"
+		} else if webhookEventType == "email_clicked" {
+			eventType = "Email - clicked email"
+		} 
+
 		segment := analytics.New(envConfig.SegmentWriteKey)
 
 		err = segment.Track(&analytics.Track{
 			UserId:     customerID,
-			Event:      webhook.EventType,
+			Event:      eventType,
 			Properties: webhook.Data,
 			Context: map[string]interface{}{
 				"event_id": webhook.EventID,
