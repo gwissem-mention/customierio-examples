@@ -181,7 +181,31 @@ func main() {
         webhookEventType = webhook.EventType
 		eventType = webhookEventType
          
-		if webhookEventType == "email_delivered" {
+		if webhookEventType == "customer_unsubscribed" {
+			eventType = "Email - unsubscribed"
+		} else if webhookEventType == "email_converted" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+			return
+		} else if webhookEventType == "email_drafted" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+			return
+		} else if webhookEventType == "email_dropped" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+			return
+		} else if webhookEventType == "email_delivered" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+			return
+		} else if webhookEventType == "email_bounced" {
+			eventType = "Email - email failed"
+		} else if webhookEventType == "email_failed" {
+			eventType = "Email - email failed"
+		} else if webhookEventType == "email_spammed" {
+			eventType = "Email - email failed"
+		} else if webhookEventType == "email_sent" {
 			eventType = "Email - email sent"
 		} else if webhookEventType == "email_opened" {
 			eventType = "Email - opened email"
